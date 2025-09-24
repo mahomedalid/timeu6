@@ -1,0 +1,162 @@
+@* Component for managing saved match state in browser localStorage *@
+@using TimeU6.Services
+@inject MatchStateInitializer StateInitializer
+@inject IMatchStateStorage Storage
+@inject IJSRuntime JSRuntime
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="bi bi-database"></i> Match State Storage
+        </h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted">
+            Manage saved match state in browser localStorage. 
+            Your match data is automatically saved when changes are made.
+        </p>
+        
+        <div class="d-flex gap-2 flex-wrap">
+            <button class="btn btn-success" @onclick="LoadSavedState" disabled="@isLoading">
+                <i class="bi bi-download"></i> 
+                @if (isLoading)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Load Saved State
+            </button>
+            
+            <button class="btn btn-danger" @onclick="ClearSavedState" disabled="@isLoading">
+                <i class="bi bi-trash"></i> Clear Saved Data
+            </button>
+            
+            <button class="btn btn-info" @onclick="CheckSavedState" disabled="@isLoading">
+                <i class="bi bi-info-circle"></i> Check Storage
+            </button>
+        </div>
+        
+        @if (!string.IsNullOrEmpty(statusMessage))
+        {
+            <div class="alert alert-@alertType mt-3 mb-0" role="alert">
+                @statusMessage
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private bool isLoading = false;
+    private string statusMessage = "";
+    private string alertType = "info";
+    
+    [Parameter] public EventCallback OnStateLoaded { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Automatically load saved state on first render
+            await LoadSavedState();
+        }
+    }
+
+    private async Task LoadSavedState()
+    {
+        isLoading = true;
+        statusMessage = "";
+        StateHasChanged();
+
+        try
+        {
+            var wasLoaded = await StateInitializer.LoadSavedStateAsync();
+            
+            if (wasLoaded)
+            {
+                statusMessage = "Successfully loaded saved match state from browser storage.";
+                alertType = "success";
+                
+                // Notify parent component that state was loaded
+                await OnStateLoaded.InvokeAsync();
+            }
+            else
+            {
+                statusMessage = "No saved match state found. Starting with fresh data.";
+                alertType = "info";
+            }
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Error loading saved state: {ex.Message}";
+            alertType = "danger";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ClearSavedState()
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to clear all saved match data? This cannot be undone."))
+            return;
+
+        isLoading = true;
+        statusMessage = "";
+        StateHasChanged();
+
+        try
+        {
+            await StateInitializer.ClearSavedStateAsync();
+            statusMessage = "Successfully cleared all saved match data.";
+            alertType = "success";
+            
+            // Notify parent component that state was cleared
+            await OnStateLoaded.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Error clearing saved state: {ex.Message}";
+            alertType = "danger";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CheckSavedState()
+    {
+        isLoading = true;
+        statusMessage = "";
+        StateHasChanged();
+
+        try
+        {
+            var storage = await JSRuntime.InvokeAsync<string>("LocalStorageActions.getItem", "timeU6_matchState");
+            
+            if (!string.IsNullOrEmpty(storage))
+            {
+                var dataSize = System.Text.Encoding.UTF8.GetByteCount(storage);
+                statusMessage = $"Found saved data ({dataSize} bytes). Match state is being persisted to browser localStorage.";
+                alertType = "info";
+            }
+            else
+            {
+                statusMessage = "No saved data found in browser localStorage.";
+                alertType = "warning";
+            }
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Error checking saved state: {ex.Message}";
+            alertType = "danger";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+}

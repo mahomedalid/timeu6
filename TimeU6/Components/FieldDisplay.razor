@@ -1,0 +1,231 @@
+@using TimeU6.Models
+@using TimeU6.Services
+@namespace TimeU6.Components
+@inject IMatchService MatchService
+@inject MatchState MatchState
+
+@* Component to display players currently on the field with substitution controls *@
+<div class="field-display">
+    <div class="card h-100">
+        <div class="card-header bg-success text-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <h4 class="card-title mb-0">
+                    <i class="bi bi-trophy"></i> On Field
+                </h4>
+                <span class="badge bg-light text-success fs-6">
+                    @PlayingPlayers.Count / @MaxPlayers
+                </span>
+            </div>
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <small class="opacity-75">@Title</small>
+            }
+        </div>
+        
+        <div class="card-body">
+            @if (!PlayingPlayers.Any())
+            {
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-person-plus display-4 mb-3 opacity-50"></i>
+                    <h5>No Players on Field</h5>
+                    <p class="mb-0">Add players from the bench to start the match</p>
+                </div>
+            }
+            else
+            {
+                <div class="row g-3">
+                    @foreach (var player in PlayingPlayers)
+                    {
+                        <div class="col-md-6 @(PlayingPlayers.Count <= 3 ? "col-lg-12" : "col-lg-6")">
+                            <div class="card border-success bg-success bg-opacity-10">
+                                <div class="card-body p-3">
+                                    <!-- Player Header -->
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <div class="flex-grow-1">
+                                            <h6 class="card-title mb-1 fw-bold">@player.Name</h6>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <span class="badge bg-success text-white">#@player.Number</span>
+                                                <span class="badge bg-primary">Playing</span>
+                                            </div>
+                                        </div>
+                                        
+                                        @if (ShowPlayerPhotos && !string.IsNullOrEmpty(GetPlayerPhoto(player)))
+                                        {
+                                            <img src="@GetPlayerPhoto(player)" 
+                                                 class="rounded-circle" 
+                                                 width="40" 
+                                                 height="40" 
+                                                 alt="@player.Name">
+                                        }
+                                    </div>
+
+                                    <!-- Playing Time Display -->
+                                    <div class="mb-3">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <small class="text-muted">Playing Time:</small>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <strong class="text-success">@GetPlayerCurrentTime(player).ToString(@"mm\:ss")</strong>
+                                                @if (MatchState.IsMatchActive)
+                                                {
+                                                    <i class="bi bi-circle-fill text-success blink" style="font-size: 0.5rem;" title="Currently playing"></i>
+                                                }
+                                            </div>
+                                        </div>
+                                        
+                                        @if (ShowPlayingTimeProgress)
+                                        {
+                                            <div class="progress mt-1" style="height: 4px;">
+                                                <div class="progress-bar @GetPlayerTimeProgressClass(player)" 
+                                                     role="progressbar" 
+                                                     style="width: @GetPlayerTimeProgressPercentage(player)%" 
+                                                     aria-valuenow="@GetPlayerTimeProgressPercentage(player)" 
+                                                     aria-valuemin="0" 
+                                                     aria-valuemax="100">
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+
+                                    <!-- Action Buttons -->
+                                    @if (ShowActions)
+                                    {
+                                        <div class="d-grid gap-2">
+                                            <button class="btn btn-outline-warning btn-sm" 
+                                                    @onclick="() => OnSubstituteOut.InvokeAsync(player.Id)"
+                                                    disabled="@(!CanSubstituteOut)">
+                                                <i class="bi bi-arrow-down-circle"></i> Sub Out
+                                            </button>
+                                            
+                                            @if (ShowAdditionalActions)
+                                            {
+                                                <div class="btn-group btn-group-sm" role="group">
+                                                    <button class="btn btn-outline-info" 
+                                                            @onclick="() => OnPlayerInfo.InvokeAsync(player.Id)"
+                                                            title="Player Info">
+                                                        <i class="bi bi-info-circle"></i>
+                                                    </button>
+                                                    
+                                                    @if (AllowTimeAdjustment)
+                                                    {
+                                                        <button class="btn btn-outline-secondary" 
+                                                                @onclick="() => OnAdjustTime.InvokeAsync(player.Id)"
+                                                                title="Adjust Time">
+                                                            <i class="bi bi-clock-history"></i>
+                                                        </button>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                @if (ShowFieldSummary)
+                {
+                    <hr>
+                    <div class="row text-center g-3">
+                        <div class="col">
+                            <div class="text-muted small">Average Playing Time</div>
+                            <div class="fw-bold text-success">@GetAveragePlayingTime().ToString(@"mm\:ss")</div>
+                        </div>
+                        <div class="col">
+                            <div class="text-muted small">Field Capacity</div>
+                            <div class="fw-bold @(PlayingPlayers.Count == MaxPlayers ? "text-warning" : "text-success")">
+                                @PlayingPlayers.Count / @MaxPlayers
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .blink {
+        animation: blink-animation 2s infinite;
+    }
+    
+    @@keyframes blink-animation {
+        0%, 50% { opacity: 1; }
+        51%, 100% { opacity: 0.3; }
+    }
+</style>
+
+@code {
+    [Parameter] public List<Player> PlayingPlayers { get; set; } = new();
+    [Parameter] public int MaxPlayers { get; set; } = 6;
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public bool ShowActions { get; set; } = true;
+    [Parameter] public bool ShowAdditionalActions { get; set; } = false;
+    [Parameter] public bool ShowPlayingTimeProgress { get; set; } = true;
+    [Parameter] public bool ShowFieldSummary { get; set; } = true;
+    [Parameter] public bool ShowPlayerPhotos { get; set; } = false;
+    [Parameter] public bool CanSubstituteOut { get; set; } = true;
+    [Parameter] public bool AllowTimeAdjustment { get; set; } = false;
+
+    [Parameter] public EventCallback<Guid> OnSubstituteOut { get; set; }
+    [Parameter] public EventCallback<Guid> OnPlayerInfo { get; set; }
+    [Parameter] public EventCallback<Guid> OnAdjustTime { get; set; }
+
+    private TimeSpan GetPlayerCurrentTime(Player player)
+    {
+        var totalTime = player.PlayingTime;
+        
+        // Add current session time if player is playing and match is active
+        if (player.IsPlaying && MatchState.IsMatchActive && player.PlayingStartTime.HasValue)
+        {
+            totalTime += DateTime.Now - player.PlayingStartTime.Value;
+        }
+        
+        return totalTime;
+    }
+
+    private TimeSpan GetAveragePlayingTime()
+    {
+        if (!PlayingPlayers.Any())
+            return TimeSpan.Zero;
+
+        var totalTime = PlayingPlayers.Sum(p => GetPlayerCurrentTime(p).TotalSeconds);
+        return TimeSpan.FromSeconds(totalTime / PlayingPlayers.Count);
+    }
+
+    private string GetPlayerTimeProgressClass(Player player)
+    {
+        var playerTime = GetPlayerCurrentTime(player);
+        var averageTime = GetAveragePlayingTime();
+        
+        if (averageTime == TimeSpan.Zero)
+            return "bg-success";
+        
+        var ratio = playerTime.TotalSeconds / averageTime.TotalSeconds;
+        
+        if (ratio >= 1.2)
+            return "bg-warning";
+        if (ratio <= 0.8)
+            return "bg-info";
+        
+        return "bg-success";
+    }
+
+    private int GetPlayerTimeProgressPercentage(Player player)
+    {
+        var matchDuration = MatchState.MatchDuration;
+        if (matchDuration == TimeSpan.Zero)
+            return 0;
+
+        var playerTime = GetPlayerCurrentTime(player);
+        var percentage = (int)((playerTime.TotalSeconds / matchDuration.TotalSeconds) * 100);
+        
+        return Math.Min(percentage, 100);
+    }
+
+    private string GetPlayerPhoto(Player player)
+    {
+        // Placeholder for future player photo functionality
+        return string.Empty;
+    }
+}

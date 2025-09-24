@@ -1,0 +1,366 @@
+@page "/match"
+@using TimeU6.Models
+@using TimeU6.Services
+@using TimeU6.Components
+@inject IPlayerService PlayerService
+@inject IMatchService MatchService
+@inject NavigationManager Navigation
+@inject MatchState MatchState
+@inject MatchStateInitializer StateInitializer
+
+<PageTitle>Live Match - TimeU6</PageTitle>
+
+<div class="container-fluid">
+    @if (!MatchState.IsMatchActive && !MatchState.MatchStartTime.HasValue)
+    {
+        <!-- Match Not Started Yet -->
+        <div class="row mb-4">
+            <div class="col text-center">
+                <div class="alert alert-warning" role="alert">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>No Active Match</strong>
+                    <p class="mb-2">Please set up your team and start a match from the Setup page.</p>
+                    <button class="btn btn-primary" @onclick="GoToSetup">
+                        <i class="bi bi-people"></i> Go to Team Setup
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Match Header -->
+        <div class="row mb-4">
+            <div class="col">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h1 class="display-6 fw-bold text-success">
+                            <i class="bi bi-play-circle-fill"></i> Live Match
+                        </h1>
+                        <p class="lead mb-0">Managing @presentPlayers.Count players</p>
+                    </div>
+                    <div class="text-end">
+                        @if (showAlert)
+                        {
+                            <div class="badge bg-info fs-6 p-2 me-2">
+                                <i class="bi bi-info-circle"></i> @alertMessage
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Enhanced Match Timer Component -->
+        <div class="row mb-4">
+            <div class="col">
+                <MatchTimer OnTimerStarted="HandleTimerStarted"
+                           OnTimerPaused="HandleTimerPaused" 
+                           OnTimerResumed="HandleTimerResumed"
+                           OnTimerReset="HandleTimerReset"
+                           OnTimeUpdate="HandleTimeUpdate"
+                           ShowMatchProgress="true"
+                           ShowTimeWarnings="true" />
+            </div>
+        </div>
+
+        <!-- Enhanced Field and Bench Display with New Components -->
+        <div class="row g-4">
+            <!-- Field Display Component -->
+            <div class="col-lg-6">
+                <FieldDisplay PlayingPlayers="@playingPlayers"
+                             MaxPlayers="@MatchService.GetMaxPlayersOnField()"
+                             Title="Active players on the field"
+                             ShowActions="true"
+                             ShowPlayingTimeProgress="true"
+                             ShowFieldSummary="true"
+                             OnSubstituteOut="HandleSubstituteOut" />
+            </div>
+
+            <!-- Bench Display Component -->
+            <div class="col-lg-6">
+                <BenchDisplay BenchPlayers="@benchPlayers"
+                             AllPresentPlayers="@presentPlayers"
+                             Title="Available players for substitution"
+                             ShowActions="true"
+                             ShowQuickActions="true"
+                             ShowPlayingTimeComparison="true"
+                             ShowBenchSummary="true"
+                             CanAddToField="@MatchService.CanAddPlayerToField()"
+                             OnSubstituteIn="HandleSubstituteIn"
+                             OnRotateAll="HandleRotateAll" />
+            </div>
+        </div>
+
+        <!-- Match Statistics -->
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="bi bi-bar-chart"></i> Playing Time Summary
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            @foreach (var player in presentPlayers.OrderByDescending(p => GetPlayerCurrentTime(p)))
+                            {
+                                <div class="col-md-4 col-lg-3">
+                                    <div class="d-flex align-items-center p-2 border rounded">
+                                        <div class="me-2">
+                                            @if (player.IsPlaying)
+                                            {
+                                                <i class="bi bi-play-circle-fill text-success"></i>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-pause-circle-fill text-warning"></i>
+                                            }
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <div class="fw-bold">@player.Name</div>
+                                            <small class="text-muted">@GetPlayerCurrentTime(player).ToString(@"mm\:ss")</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Storage Management Section -->
+        <div class="row mt-4">
+            <div class="col">
+                <StorageManager OnStateLoaded="HandleStateLoaded" />
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1">Quick Actions</h6>
+                                <small class="text-muted">Common match management tasks</small>
+                            </div>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-outline-primary" @onclick="GoToSetup">
+                                    <i class="bi bi-people"></i> Team Setup
+                                </button>
+                                <button class="btn btn-outline-secondary" @onclick="RefreshData">
+                                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<Player> allPlayers = new();
+    private List<Player> presentPlayers = new();
+    private List<Player> playingPlayers = new();
+    private List<Player> benchPlayers = new();
+    
+    // Alert system for user notifications
+    private bool showAlert = false;
+    private string alertMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Load saved state first
+        try
+        {
+            await StateInitializer.LoadSavedStateAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading saved state in Match: {ex.Message}");
+        }
+        
+        LoadData();
+        
+        // Update player times every second if match is active
+        if (MatchState.IsMatchActive)
+        {
+            var timer = new System.Threading.Timer(UpdatePlayerTimes, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        }
+    }
+
+    private void LoadData()
+    {
+        allPlayers = PlayerService.GetAllPlayers();
+        presentPlayers = allPlayers.Where(p => p.IsPresent).ToList();
+        playingPlayers = allPlayers.Where(p => p.IsPlaying).ToList();
+        benchPlayers = allPlayers.Where(p => p.IsPresent && !p.IsPlaying).ToList();
+    }
+
+    // Event handlers for component callbacks
+    private void HandleTimerStarted()
+    {
+        LoadData();
+        StateHasChanged();
+    }
+
+    private void HandleTimerPaused()
+    {
+        LoadData();
+        StateHasChanged();
+    }
+
+    private void HandleTimerResumed()
+    {
+        LoadData();
+        StateHasChanged();
+    }
+
+    private void HandleTimerReset()
+    {
+        LoadData();
+        StateHasChanged();
+    }
+
+    private void HandleTimeUpdate()
+    {
+        LoadData();
+        StateHasChanged();
+    }
+
+    private void HandleSubstituteOut(Guid playerId)
+    {
+        SubstituteOut(playerId);
+    }
+
+    private void HandleSubstituteIn(Guid playerId)
+    {
+        SubstituteIn(playerId);
+    }
+
+    private void HandleRotateAll()
+    {
+        // Implement rotation logic: swap all playing players with bench players
+        var currentPlayingPlayers = playingPlayers.ToList();
+        var currentBenchPlayers = benchPlayers.Take(MatchService.GetMaxPlayersOnField()).ToList();
+        
+        // Move all current playing players to bench
+        foreach (var player in currentPlayingPlayers)
+        {
+            MatchService.RemovePlayerFromField(player.Id);
+        }
+        
+        // Add bench players to field up to max capacity
+        foreach (var player in currentBenchPlayers)
+        {
+            if (MatchService.CanAddPlayerToField())
+            {
+                MatchService.AddPlayerToField(player.Id);
+            }
+        }
+        
+        LoadData();
+        StateHasChanged();
+    }
+
+    private void StartMatch()
+    {
+        MatchService.StartMatch();
+        StateHasChanged();
+    }
+
+    private void PauseMatch()
+    {
+        MatchService.PauseMatch();
+        StateHasChanged();
+    }
+
+    private void ResetMatch()
+    {
+        MatchService.ResetMatch();
+        LoadData();
+        StateHasChanged();
+    }
+
+    private void SubstituteIn(Guid playerId)
+    {
+        if (MatchService.AddPlayerToField(playerId))
+        {
+            LoadData();
+            StateHasChanged();
+        }
+    }
+
+    private void SubstituteOut(Guid playerId)
+    {
+        if (MatchService.RemovePlayerFromField(playerId))
+        {
+            LoadData();
+            StateHasChanged();
+        }
+    }
+
+    private void RefreshData()
+    {
+        LoadData();
+        StateHasChanged();
+    }
+
+    private void GoToSetup()
+    {
+        Navigation.NavigateTo("/setup");
+    }
+
+    private string GetElapsedTimeDisplay()
+    {
+        var elapsed = MatchService.GetElapsedTime();
+        return elapsed.ToString(@"mm\:ss");
+    }
+
+    private string GetRemainingTimeDisplay()
+    {
+        var remaining = MatchState.GetRemainingTime();
+        return remaining.ToString(@"mm\:ss");
+    }
+
+    private TimeSpan GetPlayerCurrentTime(Player player)
+    {
+        var totalTime = player.PlayingTime;
+        
+        // Add current session time if player is playing and match is active
+        if (player.IsPlaying && MatchState.IsMatchActive && player.PlayingStartTime.HasValue)
+        {
+            totalTime += DateTime.Now - player.PlayingStartTime.Value;
+        }
+        
+        return totalTime;
+    }
+
+    private void UpdatePlayerTimes(object? state)
+    {
+        if (MatchState.IsMatchActive)
+        {
+            InvokeAsync(() =>
+            {
+                StateHasChanged();
+            });
+        }
+    }
+
+    /// <summary>
+    /// Handle when StorageManager loads or clears state
+    /// </summary>
+    private async Task HandleStateLoaded()
+    {
+        LoadData();
+        StateHasChanged();
+        
+        // Small delay to ensure UI updates
+        await Task.Delay(100);
+    }
+}

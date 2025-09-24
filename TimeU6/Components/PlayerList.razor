@@ -1,0 +1,160 @@
+@using TimeU6.Models
+@namespace TimeU6.Components
+
+@* Reusable component to display a list of players with various options and actions *@
+<div class="player-list">
+    @if (Players == null || !Players.Any())
+    {
+        <div class="alert alert-info" role="alert">
+            <i class="bi bi-info-circle"></i> @EmptyMessage
+        </div>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(Title))
+        {
+            <h4 class="mb-3">@Title (@Players.Count)</h4>
+        }
+
+        <div class="row g-3">
+            @foreach (var player in Players)
+            {
+                <div class="col-md-6 col-lg-4">
+                    <div class="card @GetPlayerCardClass(player)">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <h6 class="card-title mb-1">@player.Name</h6>
+                                    <small class="text-muted">#@player.Number</small>
+                                </div>
+                                <span class="badge @GetPlayerStatusBadge(player)">
+                                    @GetPlayerStatus(player)
+                                </span>
+                            </div>
+
+                            @if (ShowPlayingTime && player.PlayingTime > TimeSpan.Zero)
+                            {
+                                <div class="mb-2">
+                                    <small class="text-muted">
+                                        Playing Time: <strong>@player.PlayingTime.ToString(@"mm\:ss")</strong>
+                                    </small>
+                                </div>
+                            }
+
+                            @if (ShowPresenceToggle)
+                            {
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" 
+                                           checked="@player.IsPresent" 
+                                           @onchange="@(e => OnPresenceChanged.InvokeAsync(new PresenceChangedEventArgs { PlayerId = player.Id, IsPresent = (bool)e.Value! }))"
+                                           id="presence-@player.Id">
+                                    <label class="form-check-label" for="presence-@player.Id">
+                                        Present
+                                    </label>
+                                </div>
+                            }
+
+                            @if (ShowActions)
+                            {
+                                <div class="btn-group btn-group-sm w-100" role="group">
+                                    @if (ShowSubstituteActions)
+                                    {
+                                        @if (player.IsPresent && !player.IsPlaying)
+                                        {
+                                            <button class="btn btn-outline-success" 
+                                                    @onclick="() => OnSubstituteIn.InvokeAsync(player.Id)">
+                                                <i class="bi bi-arrow-up-circle"></i> Sub In
+                                            </button>
+                                        }
+                                        @if (player.IsPlaying)
+                                        {
+                                            <button class="btn btn-outline-warning" 
+                                                    @onclick="() => OnSubstituteOut.InvokeAsync(player.Id)">
+                                                <i class="bi bi-arrow-down-circle"></i> Sub Out
+                                            </button>
+                                        }
+                                    }
+                                    
+                                    @if (ShowEditAction)
+                                    {
+                                        <button class="btn btn-outline-primary" 
+                                                @onclick="() => OnEditPlayer.InvokeAsync(player.Id)">
+                                            <i class="bi bi-pencil"></i> Edit
+                                        </button>
+                                    }
+                                    
+                                    @if (ShowRemoveAction)
+                                    {
+                                        <button class="btn btn-outline-danger" 
+                                                @onclick="() => OnRemovePlayer.InvokeAsync(player.Id)">
+                                            <i class="bi bi-trash"></i> Remove
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public List<Player> Players { get; set; } = new();
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string EmptyMessage { get; set; } = "No players found.";
+    [Parameter] public bool ShowActions { get; set; } = false;
+    [Parameter] public bool ShowSubstituteActions { get; set; } = false;
+    [Parameter] public bool ShowEditAction { get; set; } = false;
+    [Parameter] public bool ShowRemoveAction { get; set; } = false;
+    [Parameter] public bool ShowPresenceToggle { get; set; } = false;
+    [Parameter] public bool ShowPlayingTime { get; set; } = false;
+
+    [Parameter] public EventCallback<Guid> OnSubstituteIn { get; set; }
+    [Parameter] public EventCallback<Guid> OnSubstituteOut { get; set; }
+    [Parameter] public EventCallback<Guid> OnEditPlayer { get; set; }
+    [Parameter] public EventCallback<Guid> OnRemovePlayer { get; set; }
+    [Parameter] public EventCallback<PresenceChangedEventArgs> OnPresenceChanged { get; set; }
+
+    private string GetPlayerCardClass(Player player)
+    {
+        var baseClass = "h-100";
+        
+        if (!player.IsPresent)
+            return $"{baseClass} border-secondary";
+        
+        if (player.IsPlaying)
+            return $"{baseClass} border-success bg-light";
+        
+        return baseClass;
+    }
+
+    private string GetPlayerStatusBadge(Player player)
+    {
+        if (!player.IsPresent)
+            return "bg-secondary";
+        
+        if (player.IsPlaying)
+            return "bg-success";
+        
+        return "bg-warning text-dark";
+    }
+
+    private string GetPlayerStatus(Player player)
+    {
+        if (!player.IsPresent)
+            return "Absent";
+        
+        if (player.IsPlaying)
+            return "Playing";
+        
+        return "Bench";
+    }
+
+    public class PresenceChangedEventArgs
+    {
+        public Guid PlayerId { get; set; }
+        public bool IsPresent { get; set; }
+    }
+}

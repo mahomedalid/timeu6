@@ -1,0 +1,463 @@
+@page "/setup"
+@using TimeU6.Models
+@using TimeU6.Services
+@using TimeU6.Components
+@inject IMatchService MatchService
+@inject NavigationManager Navigation
+@inject MatchState MatchState
+@inject MatchStateInitializer StateInitializer
+@inject IPlayerService PlayerService
+
+<PageTitle>Team Setup - TimeU6</PageTitle>
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="display-5 fw-bold text-primary">
+                <i class="bi bi-people-fill"></i> Team Setup
+            </h1>
+            <p class="lead">Add players and prepare your team for the match</p>
+        </div>
+    </div>
+
+    @if (showAlert && !string.IsNullOrEmpty(alertMessage))
+    {
+        <div class="alert @alertClass alert-dismissible fade show" role="alert">
+            <i class="bi @alertIcon"></i> @alertMessage
+            <button type="button" class="btn-close" @onclick="ClearAlert"></button>
+        </div>
+    }
+
+    <div class="row g-4">
+        <!-- Add Player Form Section -->
+        <div class="col-lg-5">
+            <AddPlayerForm Title="Add New Player" 
+                          ShowPlayerCount="true"
+                          PlayerCount="@allPlayers.Count"
+                          OnPlayerAdded="HandlePlayerAdded" />
+        </div>
+
+        <!-- Team Roster Section -->
+        <div class="col-lg-7">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h3>Team Roster</h3>
+                @if (allPlayers.Count > 0)
+                {
+                    <div class="btn-group btn-group-sm" role="group">
+                        <input type="radio" class="btn-check" name="viewOptions" id="viewAll" 
+                               checked="@(currentView == ViewMode.All)" 
+                               @onchange="() => SetView(ViewMode.All)">
+                        <label class="btn btn-outline-primary" for="viewAll">
+                            All (@allPlayers.Count)
+                        </label>
+
+                        <input type="radio" class="btn-check" name="viewOptions" id="viewPresent" 
+                               checked="@(currentView == ViewMode.Present)" 
+                               @onchange="() => SetView(ViewMode.Present)">
+                        <label class="btn btn-outline-success" for="viewPresent">
+                            Present (@presentPlayers.Count)
+                        </label>
+
+                        <input type="radio" class="btn-check" name="viewOptions" id="viewAbsent" 
+                               checked="@(currentView == ViewMode.Absent)" 
+                               @onchange="() => SetView(ViewMode.Absent)">
+                        <label class="btn btn-outline-secondary" for="viewAbsent">
+                            Absent (@absentPlayers.Count)
+                        </label>
+                    </div>
+                }
+            </div>
+
+            @{
+                var playersToShow = GetPlayersForCurrentView();
+                var emptyMessage = GetEmptyMessageForCurrentView();
+            }
+
+            <PlayerList Players="@playersToShow"
+                       EmptyMessage="@emptyMessage"
+                       ShowActions="true"
+                       ShowEditAction="false"
+                       ShowRemoveAction="true"
+                       ShowPresenceToggle="true"
+                       ShowPlayingTime="false"
+                       OnRemovePlayer="HandleRemovePlayer"
+                       OnPresenceChanged="HandlePresenceChanged" />
+        </div>
+    </div>
+
+    <!-- Match Readiness Section -->
+    @if (allPlayers.Count > 0)
+    {
+        <div class="row mt-5">
+            <div class="col">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h4 class="card-title">
+                            <i class="bi bi-flag"></i> Match Readiness
+                        </h4>
+                        
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <div class="d-flex align-items-center">
+                                    <div class="bg-primary text-white rounded-circle p-2 me-3">
+                                        <i class="bi bi-people"></i>
+                                    </div>
+                                    <div>
+                                        <div class="fw-bold">@allPlayers.Count</div>
+                                        <small class="text-muted">Total Players</small>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <div class="d-flex align-items-center">
+                                    <div class="bg-success text-white rounded-circle p-2 me-3">
+                                        <i class="bi bi-check-circle"></i>
+                                    </div>
+                                    <div>
+                                        <div class="fw-bold">@presentPlayers.Count</div>
+                                        <small class="text-muted">Present</small>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <div class="d-flex align-items-center">
+                                    <div class="bg-warning text-dark rounded-circle p-2 me-3">
+                                        <i class="bi bi-clock"></i>
+                                    </div>
+                                    <div>
+                                        <div class="fw-bold">Ready</div>
+                                        <small class="text-muted">Status</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <div class="mb-3">
+                            <h6><i class="bi bi-gear"></i> Match Configuration</h6>
+                            <div class="row g-2 text-sm">
+                                <div class="col-6">
+                                    <small class="text-muted">Match Duration:</small>
+                                    <div class="fw-bold">@MatchState.MatchDuration.TotalMinutes minutes</div>
+                                </div>
+                                <div class="col-6">
+                                    <small class="text-muted">Max Players on Field:</small>
+                                    <div class="fw-bold">@MatchService.GetMaxPlayersOnField() players</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                @if (presentPlayers.Count < 3)
+                                {
+                                    <div class="text-warning">
+                                        <i class="bi bi-exclamation-triangle"></i>
+                                        Need at least 3 players present to start a match
+                                    </div>
+                                    <small class="text-muted d-block">Current: @presentPlayers.Count present, need @(3 - presentPlayers.Count) more</small>
+                                }
+                                else if (MatchState.IsMatchActive || MatchState.MatchStartTime.HasValue)
+                                {
+                                    <div class="text-info">
+                                        <i class="bi bi-info-circle"></i>
+                                        Match is already in progress
+                                    </div>
+                                    <small class="text-muted d-block">Go to Live Match to continue managing</small>
+                                }
+                                else
+                                {
+                                    <div class="text-success">
+                                        <i class="bi bi-check-circle"></i>
+                                        Ready to start match with @presentPlayers.Count players
+                                    </div>
+                                    <small class="text-muted d-block">Players will be placed on bench initially</small>
+                                }
+                            </div>
+                            
+                            <div>
+                                @if (MatchState.IsMatchActive || MatchState.MatchStartTime.HasValue)
+                                {
+                                    <button class="btn btn-info btn-lg" 
+                                            @onclick="GoToMatch">
+                                        <i class="bi bi-play-circle me-2"></i>
+                                        Go to Live Match
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-success btn-lg" 
+                                            @onclick="StartMatch"
+                                            disabled="@(presentPlayers.Count < 3 || isStartingMatch)">
+                                        @if (isStartingMatch)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                            @:Initializing...
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-play-circle me-2"></i>
+                                            @:Initialize Match
+                                        }
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<Player> allPlayers = new();
+    private List<Player> presentPlayers = new();
+    private List<Player> absentPlayers = new();
+    private ViewMode currentView = ViewMode.All;
+    private bool isStartingMatch = false;
+    
+    // Alert system
+    private bool showAlert = false;
+    private string alertMessage = string.Empty;
+    private string alertClass = "alert-success";
+    private string alertIcon = "bi-check-circle";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Console.WriteLine("Setup page initialized");
+        
+        // Load saved state first
+        try
+        {
+            await StateInitializer.LoadSavedStateAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading saved state in Setup: {ex.Message}");
+        }
+        
+        LoadPlayers();
+    }
+
+    protected override void OnAfterRender(bool firstTime = true)
+    {
+        Console.WriteLine("Setup page rendered");
+    }
+
+    private void LoadPlayers()
+    {
+        allPlayers = PlayerService.GetAllPlayers();
+        Console.WriteLine($"Loaded {allPlayers.Count} players from service");
+        UpdatePlayerLists();
+    }
+
+    private void UpdatePlayerLists()
+    {
+        presentPlayers = allPlayers.Where(p => p.IsPresent).ToList();
+        absentPlayers = allPlayers.Where(p => !p.IsPresent).ToList();
+    }
+
+    private void HandlePlayerAdded(AddPlayerForm.PlayerAddedEventArgs args)
+    {
+        try
+        {
+            Console.WriteLine($"Adding player: {args.Name} with requested number: {args.Number}");
+            var player = PlayerService.AddPlayer(args.Name);
+            
+            // If a specific number was requested, try to update it
+            if (args.Number.HasValue)
+            {
+                if (!PlayerService.UpdatePlayerNumber(player.Id, args.Number.Value))
+                {
+                    args.Success = false;
+                    args.ErrorMessage = $"Jersey number {args.Number} is already taken";
+                    return;
+                }
+            }
+
+            args.Success = true;
+            LoadPlayers();
+            ShowSuccessAlert($"Player '{args.Name}' added with jersey #{player.Number}");
+        }
+        catch (Exception ex)
+        {
+            args.Success = false;
+            args.ErrorMessage = ex.Message;
+        }
+    }
+
+    private void HandleRemovePlayer(Guid playerId)
+    {
+        var player = PlayerService.GetPlayer(playerId);
+        if (player != null)
+        {
+            if (PlayerService.RemovePlayer(playerId))
+            {
+                LoadPlayers();
+                ShowSuccessAlert($"Player '{player.Name}' removed from roster");
+            }
+            else
+            {
+                ShowErrorAlert("Failed to remove player");
+            }
+        }
+    }
+
+    private void HandlePresenceChanged(PlayerList.PresenceChangedEventArgs args)
+    {
+        if (PlayerService.UpdatePlayerPresence(args.PlayerId, args.IsPresent))
+        {
+            var player = PlayerService.GetPlayer(args.PlayerId);
+            LoadPlayers();
+            
+            if (player != null)
+            {
+                var status = args.IsPresent ? "present" : "absent";
+                ShowInfoAlert($"{player.Name} marked as {status}");
+            }
+        }
+        else
+        {
+            ShowErrorAlert("Failed to update player presence");
+        }
+    }
+
+    private void StartMatch()
+    {
+        if (presentPlayers.Count < 3)
+            return;
+
+        isStartingMatch = true;
+        try
+        {
+            // Initialize the match with present players
+            if (MatchService.InitializeMatch(startWithPlayers: false))
+            {
+                ShowSuccessAlert($"Match initialized with {presentPlayers.Count} players. Navigate to Live Match to begin!");
+                
+                // Navigate to match page after a brief delay to show the success message
+                Task.Delay(1500).ContinueWith(_ => 
+                {
+                    InvokeAsync(() => Navigation.NavigateTo("/match"));
+                });
+            }
+            else
+            {
+                ShowErrorAlert("Failed to initialize match. Ensure at least 3 players are present.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowErrorAlert($"Failed to start match: {ex.Message}");
+        }
+        finally
+        {
+            isStartingMatch = false;
+        }
+    }
+
+    private void SetView(ViewMode mode)
+    {
+        currentView = mode;
+    }
+
+    private List<Player> GetPlayersForCurrentView()
+    {
+        return currentView switch
+        {
+            ViewMode.Present => presentPlayers,
+            ViewMode.Absent => absentPlayers,
+            _ => allPlayers
+        };
+    }
+
+    private string GetEmptyMessageForCurrentView()
+    {
+        return currentView switch
+        {
+            ViewMode.Present => "No players marked as present",
+            ViewMode.Absent => "All players are present",
+            _ => "No players added yet. Add your first player to get started!"
+        };
+    }
+
+    private void ShowSuccessAlert(string message)
+    {
+        alertMessage = message;
+        alertClass = "alert-success";
+        alertIcon = "bi-check-circle";
+        showAlert = true;
+        StateHasChanged();
+    }
+
+    private void ShowErrorAlert(string message)
+    {
+        alertMessage = message;
+        alertClass = "alert-danger";
+        alertIcon = "bi-exclamation-triangle";
+        showAlert = true;
+        StateHasChanged();
+    }
+
+    private void ShowInfoAlert(string message)
+    {
+        alertMessage = message;
+        alertClass = "alert-info";
+        alertIcon = "bi-info-circle";
+        showAlert = true;
+        StateHasChanged();
+    }
+
+    private void ClearAlert()
+    {
+        showAlert = false;
+        StateHasChanged();
+    }
+
+    private void GoToMatch()
+    {
+        Navigation.NavigateTo("/match");
+    }
+
+    /// <summary>
+    /// Handle when StorageManager loads or clears state
+    /// </summary>
+    private async Task HandleStateLoaded()
+    {
+        LoadPlayers();
+        StateHasChanged();
+        
+        // Small delay to ensure UI updates, then show confirmation
+        await Task.Delay(100);
+        ShowInfoAlert("Team data updated from storage operations");
+    }
+
+    /// <summary>
+    /// Public method to reload state from storage - can be called by StorageManager component
+    /// </summary>
+    public async Task RefreshFromStorage()
+    {
+        try
+        {
+            await StateInitializer.LoadSavedStateAsync();
+            LoadPlayers();
+            StateHasChanged();
+            ShowInfoAlert("Team data refreshed from saved state");
+        }
+        catch (Exception ex)
+        {
+            ShowErrorAlert($"Error refreshing from storage: {ex.Message}");
+        }
+    }
+
+    private enum ViewMode
+    {
+        All,
+        Present,
+        Absent
+    }
+}

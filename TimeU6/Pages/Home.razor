@@ -1,0 +1,121 @@
+﻿@page "/"
+@inject NavigationManager Navigation
+
+<PageTitle>TimeU6 - U6 Soccer Team Management</PageTitle>
+
+<div class="container-fluid">
+    <div class="row mb-5">
+        <div class="col text-center">
+            <h1 class="display-3 fw-bold text-primary mb-3">
+                <i class="bi bi-trophy"></i> TimeU6
+            </h1>
+            <p class="lead fs-4">U6 Soccer Team Management Made Simple</p>
+            <p class="text-muted">
+                Easily manage your youth soccer team roster, track playing time, and handle substitutions during matches
+            </p>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-5">
+        <div class="col-md-4">
+            <div class="card h-100 text-center border-primary">
+                <div class="card-body">
+                    <div class="text-primary mb-3">
+                        <i class="bi bi-people display-4"></i>
+                    </div>
+                    <h5 class="card-title">Team Setup</h5>
+                    <p class="card-text">
+                        Add players to your roster, mark attendance, and prepare your team for matches
+                    </p>
+                    <button class="btn btn-primary" @onclick="GoToSetup">
+                        <i class="bi bi-person-plus"></i> Setup Team
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card h-100 text-center border-success">
+                <div class="card-body">
+                    <div class="text-success mb-3">
+                        <i class="bi bi-stopwatch display-4"></i>
+                    </div>
+                    <h5 class="card-title">Live Match</h5>
+                    <p class="card-text">
+                        Start matches, track playing time, and manage substitutions in real-time
+                    </p>
+                    <button class="btn btn-success" @onclick="GoToMatch">
+                        <i class="bi bi-play-circle"></i> Live Match
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card h-100 text-center border-info">
+                <div class="card-body">
+                    <div class="text-info mb-3">
+                        <i class="bi bi-bar-chart display-4"></i>
+                    </div>
+                    <h5 class="card-title">Analytics</h5>
+                    <p class="card-text">
+                        View playing time statistics and ensure fair rotation for all players
+                    </p>
+                    <button class="btn btn-info" disabled>
+                        <i class="bi bi-graph-up"></i> Coming Soon
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col">
+            <div class="card bg-light">
+                <div class="card-body">
+                    <h3 class="card-title">
+                        <i class="bi bi-info-circle text-primary"></i> Getting Started
+                    </h3>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <h5>1. Setup Your Team</h5>
+                            <p class="mb-2">Add all players to your team roster with their names and jersey numbers</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h5>2. Mark Attendance</h5>
+                            <p class="mb-2">Before each match, mark which players are present and ready to play</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h5>3. Start Match</h5>
+                            <p class="mb-2">Begin the match timer and manage player substitutions in real-time</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h5>4. Fair Play</h5>
+                            <p class="mb-2">Ensure all players get equal playing time with automatic tracking and alerts</p>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="text-center">
+                        <button class="btn btn-primary btn-lg" @onclick="GoToSetup">
+                            <i class="bi bi-rocket"></i> Get Started
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private void GoToSetup()
+    {
+        Navigation.NavigateTo("/setup");
+    }
+
+    private void GoToMatch()
+    {
+        Navigation.NavigateTo("/match");
+    }
+}

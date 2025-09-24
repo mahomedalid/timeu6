@@ -1,0 +1,251 @@
+@namespace TimeU6.Components
+
+@* Simple form component for adding new players with validation *@
+<div class="add-player-form">
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <h4 class="mb-3">@Title</h4>
+    }
+
+    <div class="card">
+        <div class="card-body">
+            <form @onsubmit="HandleSubmit" @onsubmit:preventDefault="true">
+                <div class="row g-3">
+                    <div class="col-md-8">
+                        <label for="playerName" class="form-label">Player Name</label>
+                        <input @bind="playerName" 
+                               @onkeypress="HandleKeyPress"
+                               @oninput="OnPlayerNameInput"
+                               id="playerName" 
+                               class="form-control @GetNameInputClass()" 
+                               placeholder="Enter player name" 
+                               maxlength="50"
+                               autocomplete="off" />
+                        @if (showNameError)
+                        {
+                            <div class="invalid-feedback d-block">
+                                @nameErrorMessage
+                            </div>
+                        }
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <label for="playerNumber" class="form-label">Jersey Number (Optional)</label>
+                        <input @bind="playerNumber" 
+                               id="playerNumber" 
+                               class="form-control @GetNumberInputClass()" 
+                               type="number" 
+                               min="1" 
+                               max="99" 
+                               placeholder="Auto-assign"
+                               autocomplete="off" />
+                        @if (showNumberError)
+                        {
+                            <div class="invalid-feedback d-block">
+                                @numberErrorMessage
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="mt-3 d-flex justify-content-between align-items-center">
+                    <div>
+                        @if (ShowPlayerCount && PlayerCount > 0)
+                        {
+                            <small class="text-muted">
+                                <i class="bi bi-people"></i> @PlayerCount player(s) in roster
+                            </small>
+                        }
+                    </div>
+                    
+                    <div>
+                        <button type="button" 
+                                class="btn btn-outline-secondary me-2" 
+                                @onclick="ClearForm"
+                                disabled="@IsFormEmpty()">
+                            <i class="bi bi-x-circle"></i> Clear
+                        </button>
+                        
+                        <button type="submit" 
+                                class="btn btn-primary" 
+                                disabled="@(!IsFormValid())">
+                            <i class="bi bi-person-plus"></i> 
+                            @if (isAdding)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                @:Adding...
+                            }
+                            else
+                            {
+                                @:Add Player
+                            }
+                        </button>
+                    </div>
+                </div>
+
+                @if (ShowSuccessMessage && !string.IsNullOrEmpty(successMessage))
+                {
+                    <div class="alert alert-success alert-dismissible fade show mt-3" role="alert">
+                        <i class="bi bi-check-circle"></i> @successMessage
+                        <button type="button" class="btn-close" @onclick="ClearSuccessMessage"></button>
+                    </div>
+                }
+            </form>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "Add New Player";
+    [Parameter] public bool ShowPlayerCount { get; set; } = true;
+    [Parameter] public int PlayerCount { get; set; } = 0;
+    [Parameter] public bool ShowSuccessMessage { get; set; } = true;
+    [Parameter] public EventCallback<PlayerAddedEventArgs> OnPlayerAdded { get; set; }
+
+    private string playerName = string.Empty;
+    private int? playerNumber;
+    private bool isAdding = false;
+    private bool showNameError = false;
+    private bool showNumberError = false;
+    private string nameErrorMessage = string.Empty;
+    private string numberErrorMessage = string.Empty;
+    private string successMessage = string.Empty;
+
+    private async Task HandleSubmit()
+    {
+        Console.WriteLine("Submitting new player form");
+        if (!ValidateForm())
+            return;
+
+        isAdding = true;
+        try
+        {
+            var eventArgs = new PlayerAddedEventArgs
+            {
+                Name = playerName.Trim(),
+                Number = playerNumber
+            };
+
+            await OnPlayerAdded.InvokeAsync(eventArgs);
+
+            if (eventArgs.Success)
+            {
+                successMessage = $"Player '{playerName}' added successfully!";
+                ClearForm();
+            }
+            else
+            {
+                ShowError(eventArgs.ErrorMessage ?? "Failed to add player");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Error adding player: {ex.Message}");
+        }
+        finally
+        {
+            isAdding = false;
+        }
+    }
+
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await HandleSubmit();
+        }
+    }
+
+    private void OnPlayerNameInput(ChangeEventArgs e)
+    {
+        playerName = e.Value?.ToString() ?? string.Empty;
+        
+        // Clear errors when user starts typing
+        if (showNameError)
+        {
+            showNameError = false;
+            nameErrorMessage = string.Empty;
+        }
+    }
+
+    private bool ValidateForm()
+    {
+        bool isValid = true;
+        
+        // Validate name
+        if (string.IsNullOrWhiteSpace(playerName))
+        {
+            showNameError = true;
+            nameErrorMessage = "Player name is required";
+            isValid = false;
+        }
+        else if (playerName.Trim().Length < 2)
+        {
+            showNameError = true;
+            nameErrorMessage = "Player name must be at least 2 characters";
+            isValid = false;
+        }
+        
+        // Validate number if provided
+        if (playerNumber.HasValue && (playerNumber < 1 || playerNumber > 99))
+        {
+            showNumberError = true;
+            numberErrorMessage = "Jersey number must be between 1 and 99";
+            isValid = false;
+        }
+
+        return isValid;
+    }
+
+    private bool IsFormValid()
+    {
+        return !string.IsNullOrWhiteSpace(playerName) && 
+               playerName.Trim().Length >= 2 && 
+               (!playerNumber.HasValue || (playerNumber >= 1 && playerNumber <= 99)) &&
+               !isAdding;
+    }
+
+    private bool IsFormEmpty()
+    {
+        return string.IsNullOrWhiteSpace(playerName) && !playerNumber.HasValue;
+    }
+
+    private string GetNameInputClass()
+    {
+        return showNameError ? "is-invalid" : string.Empty;
+    }
+
+    private string GetNumberInputClass()
+    {
+        return showNumberError ? "is-invalid" : string.Empty;
+    }
+
+    private void ClearForm()
+    {
+        playerName = string.Empty;
+        playerNumber = null;
+        showNameError = false;
+        showNumberError = false;
+        nameErrorMessage = string.Empty;
+        numberErrorMessage = string.Empty;
+    }
+
+    private void ClearSuccessMessage()
+    {
+        successMessage = string.Empty;
+    }
+
+    private void ShowError(string message)
+    {
+        showNameError = true;
+        nameErrorMessage = message;
+    }
+
+    public class PlayerAddedEventArgs
+    {
+        public string Name { get; set; } = string.Empty;
+        public int? Number { get; set; }
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+    }
+}
